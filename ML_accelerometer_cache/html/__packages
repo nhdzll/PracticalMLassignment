@@ -1,0 +1,12 @@
+ggplot2
+lattice
+caret
+corrplot
+tidyverse
+tibble
+tidyr
+readr
+purrr
+dplyr
+stringr
+forcats

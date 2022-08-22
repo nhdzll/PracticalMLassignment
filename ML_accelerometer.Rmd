@@ -1,0 +1,92 @@
+---
+title: "Using accelerometer data for predict exercise execution outcomes"
+author: "Norberto F. Hernández-Llanes"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(caret)
+library(corrplot)
+library(tidyverse)
+```
+
+## Introduction
+
+Devices like Jawbone(R) Up^TM^, Nike(R) FuelBand^TM^ and Fitbit(R) allows us to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement -– a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+image:![](https://angletoner.com/wp-content/uploads/2019/09/5-Reasons-Why-Exercise-is-Important-edits.jpg)
+
+### Objectives
+This exercise will use supervised learning algorithms for predict the manner in which participants executed barbell lifts (correctly or incorrectly), and test the model on a test set
+
+Accelerometer data was generously shared by the Laboratório de Engenharia de Software of the [Pontific Catholic University of Rio de Janeiro](http://www.les.inf.puc-rio.br/).
+
+## Exploratory data analysis
+
+First, we get the data from this [link](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and check the structure of the file:
+
+```{r read_train, echo = FALSE, cache =  TRUE}
+url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+data <- read.csv(url, header = TRUE, na.strings = c('NA','','#DIV/0!'))
+str(data)
+```
+### Cleaning data
+
+When we inspect the dataframe, we found that the 7 first columns has useless data for the modeling process (like user name, time stamp, window time, etc.), so we'll suppress it. We will also eliminate variables with values NA or 0, since they do not contribute information to the model. Finally, it's necessary to define the outcome variable (classe) as a factor, and finally splitting the data in train and test set using caret's > createDataPartition() function.
+
+```{r splitting, echo = TRUE, cache =  TRUE, warning=FALSE}
+data[,1:7] <- NULL
+data$classe <- factor(data$classe, levels = c('A','B','C','D','E'))
+max_min <- data.frame(max = apply(data, 2 , max),
+                      min = apply(data, 2, min),
+                      columns = names(data))
+max_min$useless <- FALSE
+max_min$useless[(is.na(max_min$min) & is.na(max_min$max))] <- TRUE
+useless_columns <- max_min$columns[max_min$useless == TRUE]
+useless_columns <- paste("-", useless_columns, sep = "")
+data <- data %>% select_(.dots = useless_columns)
+inTrain <- createDataPartition(y = data$classe, p = 3/4, list = FALSE)
+trainset <- data[inTrain, ]
+testset <- data[-inTrain, ]
+dim(trainset)
+```
+
+### Correlation between variables
+
+After cleaning, we have 53 variables (52 predictors and the outcome variable) and 14,718 cases. It's necessary to explore the relationships between variables, so we'll check the correlations between variables:
+
+
+```{r correlation, eval = TRUE, cache = TRUE}
+print(as_tibble(cor(trainset[ , names(data) != "classe"])))
+```
+
+## Model prediction
+
+As we can notice, there are several degrees of correlation between variables, so we propose that this dataset it's useful for prediction. For this example, we will use the random forest model with the default options in caret:
+
+```{r rf, echo = TRUE, cache =  TRUE }
+start_time <- Sys.time()
+rf_mod <- train(classe ~ ., method = 'rf', data = trainset)
+end_time <- Sys.time()
+end_time - start_time
+rf_mod
+```
+
+Max accuracy of the model was 98.61%, with a model mtry = 27. This means that by using 27 predictors (variables) we can obtain an accuracy of 98.9%, which is quite good, so we will not try using other pre-processing options. When testing the model in the test set we obtained the following:
+
+```{r rf_pred, echo = TRUE, cache = TRUE}
+rfmod_pred <- predict(rf_mod, testset)
+confusionMatrix(data = rfmod_pred, reference = testset$classe)
+
+```
+
+## Conclusions
+
+As we can see, the accuracy of the model in the test set was high (accuracy = 99.39%, CI 95% [99.13 - 99.59]), besides the homogeneity between groups is high (kappa = 0.9923), the sensitivity and specificity values are excellent, so we can conclude that the model is suitable for use in exercise prediction with accelerometric data.
+
+Modifications to the base model (such as variable pre-weighting or grouping of variables with PCA) could marginally improve the accuracy of the model.
+
+### References:
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: [10.1007/978-3-642-34459-6_6.](https://link.springer.com/chapter/10.1007/978-3-642-34459-6_6)
